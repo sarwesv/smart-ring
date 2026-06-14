@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
+    "types": ["web-bluetooth"],
+    "strict": true,
+    "noEmitOnError": true,
+    "outDir": "."
+  },
+  "files": ["app.ts"]
+}

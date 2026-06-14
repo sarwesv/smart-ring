@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TK5 Ring Monitor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+      background: #080810;
+      color: #d0d0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Header ── */
+    header {
+      width: 100%;
+      max-width: 480px;
+      padding: 18px 24px 14px;
+      border-bottom: 1px solid #18182a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    h1 { font-size: 1rem; font-weight: 600; color: #a0a0c0; letter-spacing: 0.03em; }
+
+    .status { display: flex; align-items: center; gap: 7px; }
+    .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #333; flex-shrink: 0;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .status-text { font-size: 0.78rem; color: #555; }
+
+    .status.connected .dot     { background: #4ade80; box-shadow: 0 0 8px #4ade8088; }
+    .status.connecting .dot    { background: #facc15; animation: blink 1s infinite; }
+    .status.error .dot         { background: #f87171; }
+    .status.connected .status-text,
+    .status.connecting .status-text { color: #888; }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+    /* ── Main ── */
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 24px 32px;
+      gap: 28px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    /* ── Ring arc ── */
+    .hr-ring { position: relative; width: 200px; height: 200px; }
+    .hr-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+
+    .arc-track { fill: none; stroke: #16162a; stroke-width: 12; }
+    .arc-fill  {
+      fill: none; stroke: #f43f5e; stroke-width: 12; stroke-linecap: round;
+      stroke-dasharray: 565; stroke-dashoffset: 565;
+      transition: stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1), stroke .4s;
+    }
+    .arc-fill.ok     { stroke: #4ade80; }
+    .arc-fill.warn   { stroke: #facc15; }
+    .arc-fill.high   { stroke: #f43f5e; }
+
+    .hr-center {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 2px;
+    }
+
+    .hr-value {
+      font-size: 4.5rem; font-weight: 700; line-height: 1;
+      color: #fff; font-variant-numeric: tabular-nums;
+      transition: color .4s;
+    }
+    .hr-value.live { color: #f43f5e; }
+    .hr-value.ok   { color: #4ade80; }
+
+    .hr-unit   { font-size: .8rem; color: #555; letter-spacing: .1em; }
+    .hr-source { font-size: .65rem; color: #444; margin-top: 2px; }
+
+    /* ── Metrics ── */
+    .metrics { display: flex; gap: 16px; width: 100%; }
+
+    .card {
+      flex: 1; background: #0e0e1c;
+      border: 1px solid #1a1a2e; border-radius: 14px;
+      padding: 14px 16px; text-align: center;
+    }
+    .card-val   { font-size: 1.7rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .card-label { font-size: .65rem; color: #444; letter-spacing: .1em; text-transform: uppercase; margin-top: 4px; }
+
+    /* ── Button ── */
+    .connect-btn {
+      background: #f43f5e; color: #fff; border: none; border-radius: 12px;
+      padding: 13px 44px; font-size: .95rem; font-weight: 600;
+      cursor: pointer; letter-spacing: .01em;
+      transition: background .2s, transform .1s, opacity .2s;
+    }
+    .connect-btn:hover:not(:disabled) { background: #e11d48; }
+    .connect-btn:active:not(:disabled) { transform: scale(.97); }
+    .connect-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .connect-btn.secondary { background: #1e1e36; color: #888; }
+    .connect-btn.secondary:hover:not(:disabled) { background: #28283e; color: #aaa; }
+
+    .compat { font-size: .7rem; color: #333; }
+
+    /* ── Log ── */
+    .log-panel {
+      width: 100%; max-width: 480px;
+      border-top: 1px solid #18182a;
+      padding: 0 24px 28px;
+    }
+    .log-hdr {
+      font-size: .65rem; color: #333;
+      letter-spacing: .1em; text-transform: uppercase;
+      padding: 10px 0 6px;
+    }
+    .log {
+      height: 160px; overflow-y: auto;
+      font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+      font-size: .68rem; color: #383858;
+      display: flex; flex-direction: column;
+    }
+    .log-line { padding: 1px 0; line-height: 1.55; }
+    .log-line.hr   { color: #f43f5e; }
+    .log-line.info { color: #60a5fa; }
+    .log-line.warn { color: #facc15; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>TK5 Ring Monitor</h1>
+  <div class="status idle" id="statusEl">
+    <div class="dot"></div>
+    <span class="status-text" id="statusText">Not connected</span>
+  </div>
+</header>
+
+<main>
+  <div class="hr-ring">
+    <svg width="200" height="200" viewBox="0 0 200 200">
+      <circle class="arc-track" cx="100" cy="100" r="90"/>
+      <circle class="arc-fill high" id="arc" cx="100" cy="100" r="90"/>
+    </svg>
+    <div class="hr-center">
+      <div class="hr-value" id="hrVal">--</div>
+      <div class="hr-unit">BPM</div>
+      <div class="hr-source" id="hrSrc"></div>
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="card">
+      <div class="card-val" id="stepsVal">--</div>
+      <div class="card-label">Steps</div>
+    </div>
+    <div class="card">
+      <div class="card-val" id="calVal">--</div>
+      <div class="card-label">Cal</div>
+    </div>
+    <div class="card">
+      <div class="card-val" id="hrCacheVal">--</div>
+      <div class="card-label">Resting HR</div>
+    </div>
+  </div>
+
+  <button class="connect-btn" id="connectBtn">Connect Ring</button>
+  <div class="compat">Chrome or Edge required &nbsp;·&nbsp; HTTPS only</div>
+</main>
+
+<div class="log-panel">
+  <div class="log-hdr">Console</div>
+  <div class="log" id="logEl"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
