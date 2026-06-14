@@ -328,11 +328,12 @@ async function connect(): Promise<void> {
       setStatus('Error: ' + err.message, 'error');
       log('ERROR: ' + err, 'warn');
     }
-    btn.disabled  = false;
+    btn.disabled    = false;
     btn.textContent = 'Connect Ring';
-    btn.className = 'connect-btn';
+    btn.className   = 'connect-btn';
+    btn.onclick     = connect;
   }
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────
-document.getElementById('connectBtn')!.addEventListener('click', connect);
+(document.getElementById('connectBtn') as HTMLButtonElement).onclick = connect;

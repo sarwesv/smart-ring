@@ -294,7 +294,8 @@ async function connect() {
         btn.disabled = false;
         btn.textContent = 'Connect Ring';
         btn.className = 'connect-btn';
+        btn.onclick = connect;
     }
 }
 // ── Boot ───────────────────────────────────────────────────────────────────
-document.getElementById('connectBtn').addEventListener('click', connect);
+document.getElementById('connectBtn').onclick = connect;
