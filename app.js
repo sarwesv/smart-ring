@@ -224,11 +224,66 @@ async function runPhase2() {
     log('Phase 2 complete', 'info');
 }
 // ── Connect / disconnect ───────────────────────────────────────────────────
+async function connectToDevice(device) {
+    const btn = document.getElementById('connectBtn');
+    btn.disabled = true;
+    setStatus('Connecting...', 'connecting');
+    phase2Triggered = false;
+    liveHRActive = false;
+    writeChar = null;
+    device.addEventListener('gattserverdisconnected', () => {
+        setStatus('Disconnected', 'idle');
+        setHR(null);
+        log('Disconnected from ring', 'warn');
+        btn.disabled = false;
+        btn.textContent = 'Connect Ring';
+        btn.className = 'connect-btn';
+        btn.onclick = connect;
+        phase2Triggered = false;
+        liveHRActive = false;
+        writeChar = null;
+    });
+    const server = await device.gatt.connect();
+    log('Connected: ' + device.name, 'info');
+    const service = await server.getPrimaryService(RING_SERVICE);
+    writeChar = await service.getCharacteristic(CMD_CHAR_UUID);
+    await writeChar.startNotifications();
+    writeChar.addEventListener('characteristicvaluechanged', onCmdChar);
+    const hrChar = await service.getCharacteristic(HR_CHAR_UUID);
+    await hrChar.startNotifications();
+    hrChar.addEventListener('characteristicvaluechanged', onHRChar);
+    try {
+        const hrSvc = await server.getPrimaryService(HR_SVC_UUID);
+        const hrStdChr = await hrSvc.getCharacteristic(HR_STD_UUID);
+        await hrStdChr.startNotifications();
+        hrStdChr.addEventListener('characteristicvaluechanged', onHRStd);
+        log('2A37 subscribed', 'info');
+    }
+    catch {
+        log('2A37 not available', 'info');
+    }
+    try {
+        const fee7Svc = await server.getPrimaryService(FEE7_SVC_UUID);
+        const fea1Char = await fee7Svc.getCharacteristic(FEA1_CHAR_UUID);
+        await fea1Char.startNotifications();
+        fea1Char.addEventListener('characteristicvaluechanged', onActivity);
+        log('FEA1 (activity) subscribed', 'info');
+    }
+    catch {
+        log('FEA1 not available under FEE7', 'info');
+    }
+    setStatus('Connected — initializing', 'connected');
+    btn.disabled = false;
+    btn.textContent = 'Disconnect';
+    btn.className = 'connect-btn secondary';
+    btn.onclick = () => device.gatt.disconnect();
+    await runPhase1();
+}
 async function connect() {
     const btn = document.getElementById('connectBtn');
     if (!navigator.bluetooth) {
         setStatus('Web Bluetooth not supported', 'error');
-        log('Use Chrome or Edge on desktop. Safari and Firefox do not support Web Bluetooth.', 'warn');
+        log('Use Chrome or Edge on desktop.', 'warn');
         return;
     }
     btn.disabled = true;
@@ -239,64 +294,13 @@ async function connect() {
             acceptAllDevices: true,
             optionalServices: [RING_SERVICE, HR_SVC_UUID, FEE7_SVC_UUID],
         });
-        log('Found: ' + device.name, 'info');
-        setStatus('Connecting...', 'connecting');
-        device.addEventListener('gattserverdisconnected', () => {
-            setStatus('Disconnected', 'idle');
-            setHR(null);
-            log('Disconnected from ring', 'warn');
-            btn.disabled = false;
-            btn.textContent = 'Connect Ring';
-            btn.className = 'connect-btn';
-            btn.onclick = () => connect();
-            phase2Triggered = false;
-            liveHRActive = false;
-            writeChar = null;
-        });
-        const server = await device.gatt.connect();
-        const service = await server.getPrimaryService(RING_SERVICE);
-        // Command channel — write here, receive acks
-        writeChar = await service.getCharacteristic(CMD_CHAR_UUID);
-        await writeChar.startNotifications();
-        writeChar.addEventListener('characteristicvaluechanged', onCmdChar);
-        // Live HR channel — receive 06:00 (warming) and 06:01 (reading)
-        const hrChar = await service.getCharacteristic(HR_CHAR_UUID);
-        await hrChar.startNotifications();
-        hrChar.addEventListener('characteristicvaluechanged', onHRChar);
-        // Standard BLE HR (optional, less accurate, useful before live HR kicks in)
-        try {
-            const hrSvc = await server.getPrimaryService(HR_SVC_UUID);
-            const hrStdChr = await hrSvc.getCharacteristic(HR_STD_UUID);
-            await hrStdChr.startNotifications();
-            hrStdChr.addEventListener('characteristicvaluechanged', onHRStd);
-            log('2A37 (BLE std HR) subscribed', 'info');
-        }
-        catch {
-            log('2A37 not available on this ring', 'info');
-        }
-        // Activity data — FEA1 is under the FEE7 vendor service (confirmed from advertisement)
-        try {
-            const fee7Svc = await server.getPrimaryService(FEE7_SVC_UUID);
-            const fea1Char = await fee7Svc.getCharacteristic(FEA1_CHAR_UUID);
-            await fea1Char.startNotifications();
-            fea1Char.addEventListener('characteristicvaluechanged', onActivity);
-            log('FEA1 (activity) subscribed', 'info');
-        }
-        catch {
-            log('FEA1 activity not available under FEE7 service', 'info');
-        }
-        setStatus('Connected — initializing', 'connected');
-        btn.disabled = false;
-        btn.textContent = 'Disconnect';
-        btn.className = 'connect-btn secondary';
-        btn.onclick = () => device.gatt.disconnect();
-        await runPhase1();
+        await connectToDevice(device);
     }
     catch (e) {
         const err = e;
         if (err.name === 'NotFoundError') {
             setStatus('No device selected', 'idle');
-            log('Device picker closed without selecting a device', 'warn');
+            log('Device picker closed without selecting', 'warn');
         }
         else {
             setStatus('Error: ' + err.message, 'error');
@@ -308,5 +312,21 @@ async function connect() {
         btn.onclick = connect;
     }
 }
+// On page load, reconnect automatically if the ring was previously granted
+async function tryAutoReconnect() {
+    if (!navigator.bluetooth?.getDevices)
+        return;
+    try {
+        const devices = await navigator.bluetooth.getDevices();
+        const ring = devices.find(d => d.name?.includes('TK5'));
+        if (ring) {
+            log('Previously connected ring found — reconnecting automatically', 'info');
+            setStatus('Reconnecting...', 'connecting');
+            await connectToDevice(ring);
+        }
+    }
+    catch { /* getDevices not available or no prior device */ }
+}
 // ── Boot ───────────────────────────────────────────────────────────────────
 document.getElementById('connectBtn').onclick = connect;
+tryAutoReconnect();
