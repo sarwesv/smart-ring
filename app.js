@@ -3,8 +3,9 @@
 const RING_SERVICE = 'be940000-7333-be46-b7ae-689e71722bd5';
 const CMD_CHAR_UUID = 'be940001-7333-be46-b7ae-689e71722bd5';
 const HR_CHAR_UUID = 'be940003-7333-be46-b7ae-689e71722bd5';
-const HR_SVC_UUID = '0000180d-0000-1000-8000-00805f9b34fb';
+const HR_SVC_UUID = '0000180d-0000-1000-8000-00805f9b34fb'; // Heart Rate (advertised)
 const HR_STD_UUID = '00002a37-0000-1000-8000-00805f9b34fb';
+const FEE7_SVC_UUID = '0000fee7-0000-1000-8000-00805f9b34fb'; // Vendor (advertised)
 // ── CRC-16/CCITT (poly 0x1021, init 0xFFFF, result LE) ────────────────────
 function crc16(body) {
     let crc = 0xFFFF;
@@ -232,9 +233,12 @@ async function connect() {
     setStatus('Scanning...', 'connecting');
     log('Opening device picker...', 'info');
     try {
+        // Filter by FEE7 — the ring advertises this service UUID in its primary
+        // advertisement packet (confirmed via CoreBluetooth). BE940000 is NOT
+        // advertised, so Chrome hides the device if that's the only optionalService.
         const device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
-            optionalServices: [RING_SERVICE, HR_SVC_UUID],
+            filters: [{ services: [FEE7_SVC_UUID] }],
+            optionalServices: [RING_SERVICE, HR_SVC_UUID, FEE7_SVC_UUID],
         });
         log('Found: ' + device.name, 'info');
         setStatus('Connecting...', 'connecting');
