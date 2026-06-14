@@ -263,7 +263,7 @@ async function connect(): Promise<void> {
 
   try {
     const device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: 'TK5' }],
+      acceptAllDevices: true,
       optionalServices: [RING_SERVICE, HR_SVC_UUID],
     });
 
