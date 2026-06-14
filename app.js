@@ -279,19 +279,33 @@ async function connectToDevice(device) {
     btn.onclick = () => device.gatt.disconnect();
     await runPhase1();
 }
+function isChrome() {
+    const ua = navigator.userAgent;
+    return ua.includes('Chrome') && !ua.includes('Edg');
+}
 async function connect() {
     const btn = document.getElementById('connectBtn');
     if (!navigator.bluetooth) {
         setStatus('Web Bluetooth not supported', 'error');
-        log('Use Chrome or Edge on desktop.', 'warn');
+        log('Web Bluetooth requires Edge or Chrome. Safari and Firefox are not supported.', 'warn');
         return;
+    }
+    if (isChrome()) {
+        log('Chrome detected — Web Bluetooth BLE scanning has known issues on macOS. Edge is recommended.', 'warn');
     }
     btn.disabled = true;
     setStatus('Scanning...', 'connecting');
     log('Opening device picker...', 'info');
     try {
+        // Use advertised service UUIDs as filters (FEE7 and 180D are in the ring's
+        // primary advertisement packet). This gives Chrome's scanner a concrete UUID
+        // to scan for rather than relying on acceptAllDevices passive scan.
         const device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
+            filters: [
+                { services: [0xFEE7] }, // vendor service — advertised by ring
+                { services: [0x180D] }, // heart rate service — advertised by ring
+                { namePrefix: 'TK5' },
+            ],
             optionalServices: [RING_SERVICE, HR_SVC_UUID, FEE7_SVC_UUID],
         });
         await connectToDevice(device);
