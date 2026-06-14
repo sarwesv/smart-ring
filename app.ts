@@ -263,11 +263,8 @@ async function connect(): Promise<void> {
   log('Opening device picker...', 'info');
 
   try {
-    // Filter by FEE7 — the ring advertises this service UUID in its primary
-    // advertisement packet (confirmed via CoreBluetooth). BE940000 is NOT
-    // advertised, so Chrome hides the device if that's the only optionalService.
     const device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [FEE7_SVC_UUID] }],
+      acceptAllDevices: true,
       optionalServices: [RING_SERVICE, HR_SVC_UUID, FEE7_SVC_UUID],
     });
 
