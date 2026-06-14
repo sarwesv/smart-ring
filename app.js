@@ -6,6 +6,7 @@ const HR_CHAR_UUID = 'be940003-7333-be46-b7ae-689e71722bd5';
 const HR_SVC_UUID = '0000180d-0000-1000-8000-00805f9b34fb'; // Heart Rate (advertised)
 const HR_STD_UUID = '00002a37-0000-1000-8000-00805f9b34fb';
 const FEE7_SVC_UUID = '0000fee7-0000-1000-8000-00805f9b34fb'; // Vendor (advertised)
+const FEA1_CHAR_UUID = '0000fea1-0000-1000-8000-00805f9b34fb'; // Activity: steps/cal/hr_cached
 // ── CRC-16/CCITT (poly 0x1021, init 0xFFFF, result LE) ────────────────────
 function crc16(body) {
     let crc = 0xFFFF;
@@ -117,7 +118,8 @@ function setHR(bpm, source = '') {
     if (bpm === null) {
         valEl.textContent = '--';
         valEl.className = 'hr-value';
-        arc.setAttribute('style', 'stroke-dashoffset:565');
+        arc.setAttribute('class', 'arc-fill high');
+        arc.style.strokeDashoffset = '565';
         srcEl.textContent = '';
         return;
     }
@@ -126,11 +128,11 @@ function setHR(bpm, source = '') {
     // Color zone: green <90, yellow 90-110, red >110
     const zone = bpm < 90 ? 'ok' : bpm < 110 ? 'warn' : 'high';
     valEl.className = 'hr-value ' + zone;
-    arc.className = 'arc-fill ' + zone;
+    arc.setAttribute('class', 'arc-fill ' + zone); // SVG needs setAttribute, not .className
     // Arc: 40 bpm = 0%, 200 bpm = 100%
     const pct = Math.min(1, Math.max(0, (bpm - 40) / 160));
     const offset = (565 * (1 - pct)).toFixed(1);
-    arc.setAttribute('style', `stroke-dashoffset:${offset}`);
+    arc.style.strokeDashoffset = offset;
 }
 function setActivity(steps, cal, hrCache) {
     document.getElementById('stepsVal').textContent = steps.toLocaleString();
@@ -272,9 +274,17 @@ async function connect() {
         catch {
             log('2A37 not available on this ring', 'info');
         }
-        // Activity data — only accessible if FEA1's parent service UUID is known.
-        // The FEA1 characteristic is under a service we haven't identified yet;
-        // skipping for now so the connect doesn't fail.
+        // Activity data — FEA1 is under the FEE7 vendor service (confirmed from advertisement)
+        try {
+            const fee7Svc = await server.getPrimaryService(FEE7_SVC_UUID);
+            const fea1Char = await fee7Svc.getCharacteristic(FEA1_CHAR_UUID);
+            await fea1Char.startNotifications();
+            fea1Char.addEventListener('characteristicvaluechanged', onActivity);
+            log('FEA1 (activity) subscribed', 'info');
+        }
+        catch {
+            log('FEA1 activity not available under FEE7 service', 'info');
+        }
         setStatus('Connected — initializing', 'connected');
         btn.disabled = false;
         btn.textContent = 'Disconnect';
